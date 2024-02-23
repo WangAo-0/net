@@ -15,7 +15,7 @@ int startServer() {
   int serverSocket, clientSocket;
   sockaddr_in serverAddr, clientAddr;
   socklen_t clientAddrLen = sizeof(clientAddr);
-
+  // 1. 创建服务器套接字
   serverSocket = socket(AF_INET, SOCK_STREAM, 0);
   if (serverSocket == -1) {
     std::cerr << "Failed to create server socket\n";
@@ -27,18 +27,19 @@ int startServer() {
   serverAddr.sin_addr.s_addr = INADDR_ANY;
   serverAddr.sin_port = htons(SERVER_PORT);
 
+  // 2. 绑定服务器套接字的ip和端口号
   if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr),
            sizeof(serverAddr)) == -1) {
     std::cerr << "Failed to bind server socket\n";
     return -1;
   }
 
+  // 3. 监听服务器套接字
   if (listen(serverSocket, SOMAXCONN) == -1) {
     std::cerr << "Failed to listen for connections\n";
     return -1;
   }
   
-  // 创建服务器套接字，用于接收客户端的连接，监听8000端口
   int epollFd = epoll_create1(0);
   if (epollFd == -1) {
     std::cerr << "Failed to create epoll instance\n";
