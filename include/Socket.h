@@ -1,37 +1,26 @@
-/*
- * @Description: 
- * @Author: oliver
- * @version: 
- * @Date: 2024-02-24 00:15:24
- * @LastEditors: oliver
- * @LastEditTime: 2024-02-24 00:16:05
- */
-/**
-* socket fd 包装类
-*　RAII机制管理socket fd: 对close socket fd负责, 但不包括open/create.
-* 监听socket, 常用于server socket.
-*/
-class Socket 
-{
-public:
-    explicit Socket(int sockfd)
-    : sockfd_(sockfd)
-    { }
+#ifndef MY_SOCKET
+#define MY_SOCKET
 
-    // Socket(Socket&&) // move ctor in c++11
+#include<unistd.h>
+/**
+ *  封装socket类： Socket类是socket 文件描述符（sock fd）的一个轻量级封装，提供操作底层sock fd的常用方法。
+ * 采用RTII方式管理sock fd，但本身并不创建sock fd，也不打开它，只负责关闭。
+ * 提供的public方法主要包括：获取tcp协议栈信息（tcp_info）；绑定ip地址（bind）；监听套接字（listen）；接收连接请求（accept）；关闭连接写方向（shutdown），等等。
+ * 值得注意的是，Socket并不提供close sock fd的public方法，因为析构时，调用close关闭套接字
+*/
+
+class Socket
+{
+private:
+    const int sockfd_;
+public:
+    explicit Socket(int sockfd) : sockfd_(sockfd)
+    { }
     ~Socket();
 
     int fd() const { return sockfd_; }
-    /* 获取tcp信息, 存放到tcp_info结构 */
-    // return true if success.
-    bool getTcpInfo(struct tcp_info*) const;
-    /* 获取tcp信息字符串形式(NUL结尾), 存放到字符串数组buf[len] */
-    bool getTcpInfoString(char* buf, int len) const;
 
-    /* 绑定socket fd与本地ip地址,端口, 核心调用bind(2).
-     * 失败则终止程序
-     */
-    // abort if address in use
+      // abort if address in use
     void bindAddress(const InetAddress& addr);
     /* 监听socket fd, 核心调用listen(2).
      * 失败则终止程序
@@ -50,32 +39,10 @@ public:
      */
     int accept(InetAddress* peeraddr);
 
-    /**
-     * 关闭连接写方向
-     */
-    void shutdownWrite();
-
-    /**
-     * Enable/disable TCP_NODELAY
-     */
-    void setTcpNoDelay(bool on);
-
-    /**
-     * Enable/disable SO_REUSEADDR
-     */
-    void setReuseAddr(bool on);
-
-    /**
-     * Enable/disable SO_REUSEPORT
-     */
-    void setReusePort(bool on);
-
-    /**
-     * Enable/disable SO_KEEPALIVE
-     * @param on
-     */
-    void setKeepAlive(bool on);
-
-private:
-    const int sockfd_;
 };
+
+Socket::~Socket()
+{
+    close(sockfd_);
+}
+#endif MY_SOCKET
