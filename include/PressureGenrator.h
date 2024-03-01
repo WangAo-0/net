@@ -4,7 +4,7 @@
  * @version:
  * @Date: 2024-01-02 16:54:02
  * @LastEditors: oliver
- * @LastEditTime: 2024-01-05 08:22:23
+ * @LastEditTime: 2024-03-02 03:26:19
  */
 #include "MyDiagram.h"
 #include <arpa/inet.h>
@@ -87,7 +87,7 @@ int startPressureGenrator() {
 
     for (int i = 0; i < numEvents; ++i) {
       if (events[i].events & EPOLLOUT) {
-        if (num == 10000) {
+        if (num == 100) {
           return 0;
         }
         DiagramHeader header;

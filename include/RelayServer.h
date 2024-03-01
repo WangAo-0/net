@@ -7,39 +7,51 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
+#include "Socket.h"
 
 #define SERVER_PORT 8000
 #define MAX_EVENTS 100
 
+
+
 int startServer() {
-  int serverSocket, clientSocket;
-  sockaddr_in serverAddr, clientAddr;
-  socklen_t clientAddrLen = sizeof(clientAddr);
-  // 1. 创建服务器套接字
-  serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-  if (serverSocket == -1) {
-    std::cerr << "Failed to create server socket\n";
-    return -1;
-  }
+  // int serverSocket, clientSocket;
 
-  memset(&serverAddr, 0, sizeof(serverAddr));
-  serverAddr.sin_family = AF_INET;
-  serverAddr.sin_addr.s_addr = INADDR_ANY;
-  serverAddr.sin_port = htons(SERVER_PORT);
-
-  // 2. 绑定服务器套接字的ip和端口号
-  if (bind(serverSocket, reinterpret_cast<sockaddr *>(&serverAddr),
-           sizeof(serverAddr)) == -1) {
-    std::cerr << "Failed to bind server socket\n";
-    return -1;
-  }
-
-  // 3. 监听服务器套接字
-  if (listen(serverSocket, SOMAXCONN) == -1) {
-    std::cerr << "Failed to listen for connections\n";
-    return -1;
-  }
+  // // 1. 创建服务器套接字
+  // serverSocket = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK  , 0); // 创建一个非阻塞的套接字
+  // if (serverSocket == -1) {
+  //   std::cerr << "Failed to create server socket\n";
+  //   return -1;
+  // }
+  // //createAddr(&serverAddr);
   
+  // InetAddress serverAddr(INADDR_ANY, SERVER_PORT);
+    
+
+  // // 2. 绑定服务器套接字的ip和端口号
+  // if (bind(serverSocket, serverAddr.addr(),sizeof(sockaddr)) == -1) {
+  //   std::cerr << "Failed to bind server socket\n";
+  //   return -1;
+  // }
+
+  // // 3. 监听服务器套接字
+  // if (listen(serverSocket, SOMAXCONN) == -1) {
+  //   std::cerr << "Failed to listen for connections\n";
+  //   return -1;
+  // }
+  
+  Socket serverSocket(createNonblocking());
+  serverSocket.setReuseAddr(true);
+  serverSocket.setReusePort(true);
+  serverSocket.setTcpNoDelay(true);
+  serverSocket.setKeepAlive(true);
+
+  InetAddress serverAddr(INADDR_ANY, SERVER_PORT);
+  serverSocket.bindAddress(serverAddr);
+  serverSocket.listen();
+
+
+
   int epollFd = epoll_create1(0);
   if (epollFd == -1) {
     std::cerr << "Failed to create epoll instance\n";
@@ -48,9 +60,9 @@ int startServer() {
 
   epoll_event event, events[MAX_EVENTS];
   event.events = EPOLLIN ;
-  event.data.fd = serverSocket;
+  event.data.fd = serverSocket.fd();
 
-  if (epoll_ctl(epollFd, EPOLL_CTL_ADD, serverSocket, &event) == -1) {
+  if (epoll_ctl(epollFd, EPOLL_CTL_ADD, serverSocket.fd(), &event) == -1) {
     std::cerr << "Failed to add server socket to epoll\n";
     return -1;
   }
@@ -63,36 +75,43 @@ int startServer() {
       return -1;  // ToDo 出错处理
     }
     for (int i = 0; i < numEvents; ++i) {
-      if (events[i].data.fd == serverSocket) {
-        clientSocket = accept(serverSocket, reinterpret_cast<sockaddr *>(&clientAddr), &clientAddrLen);
-        if (clientSocket == -1) {
-          std::cerr << "Failed to accept connection\n";
+      if (events[i].data.fd == serverSocket.fd()) {
+        //sockaddr_in peerAddr;
+        //socklen_t peerAddrLen = sizeof(peerAddr);
+        //clientSocket = accept4(serverSocket, reinterpret_cast<sockaddr *>(&peerAddr), &peerAddrLen,SOCK_NONBLOCK); // 改用accept4创建非阻塞套接字 
+        InetAddress peerAddr;
+
+        // 这里clientSocket只能new出来, 不能直接定义，否则析构函数会关闭fd
+        // TODO 这里new出来的对象没有delete，会造成内存泄漏
+        Socket *clientSocket = new Socket(serverSocket.accept(peerAddr));
+
+        if (clientSocket->fd() == -1) {
           continue;
         }
-        std::cout << "Client connected: " << inet_ntoa(clientAddr.sin_addr) << ":" << ntohs(clientAddr.sin_port) << std::endl;
+        std::cout << "accept client (fd=" << clientSocket->fd()<<", ip = "<<peerAddr.ip() << ":" << peerAddr.port()<< " ) ok."<<std::endl;
 
         //将客户端套接字加入到epoll中，监听该套接字上的可读事件，只要可读就一直读
         event.events = EPOLLIN | EPOLLET;
-        event.data.fd = clientSocket;
-        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, clientSocket, &event) == -1) {
+        event.data.fd = clientSocket->fd();
+        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, clientSocket->fd(), &event) == -1) {
           std::cerr << "Failed to add client socket to epoll\n";
           return -1;
         }
 
         // 接收客户端发送的第一个消息作为ID
         int clientID;
-        int recvBytes = recv(clientSocket, &clientID, sizeof(clientID), 0);
+        int recvBytes = recv(clientSocket->fd(), &clientID, sizeof(clientID), 0);
         if (recvBytes <= 0) {
           std::cerr << "Failed to receive client ID\n";
-          close(clientSocket);
-          epoll_ctl(epollFd, EPOLL_CTL_DEL, clientSocket, nullptr);
+          epoll_ctl(epollFd, EPOLL_CTL_DEL, clientSocket->fd(), nullptr);
+          delete clientSocket;
           continue;
         }
 
         // 将客户端ID和套接字建立关联
         std::cout << "Client ID: " << clientID << std::endl;
         std::cout << "Client fd: " << clientSocket << std::endl;
-        clientIDMap[clientID] = clientSocket; // 将ID和客户端套接字的关系存储到unordered_map中
+        clientIDMap[clientID] = clientSocket->fd(); // 将ID和客户端套接字的关系存储到unordered_map中
       } else if(events[i].events & EPOLLIN){
         // 监听到客户端的套接字，说明客户端有消息发送过来,转发消息
   
@@ -136,7 +155,7 @@ int startServer() {
     }
   }
 
-  close(serverSocket);
+  delete &serverSocket;
   close(epollFd);
 
   return 0;
