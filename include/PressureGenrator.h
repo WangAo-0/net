@@ -4,7 +4,7 @@
  * @version:
  * @Date: 2024-01-02 16:54:02
  * @LastEditors: oliver
- * @LastEditTime: 2024-01-05 08:22:23
+ * @LastEditTime: 2024-03-05 22:56:47
  */
 #include "MyDiagram.h"
 #include <arpa/inet.h>
@@ -18,7 +18,7 @@
 #include <vector>
 
 #define SERVER_IP "127.0.0.1"
-#define SERVER_PORT 8000
+#define SERVER_PORT 8080
 #define NUM_CLIENTS 50
 
 int startPressureGenrator() {
