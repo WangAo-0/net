@@ -4,13 +4,13 @@
  * @version: 
  * @Date: 2024-03-02 14:34:10
  * @LastEditors: oliver
- * @LastEditTime: 2024-03-05 15:49:54
+ * @LastEditTime: 2024-03-05 21:23:22
  */
 class Channel
 {
 private:
     int fd_;
-    bool isListen_; // true表示是监听套接字，false表示是连接套接字 
+    bool isListen_; // true表示是服务器端监听套接字，false表示是客户端连接上来的套接字 
 public:
     Channel(int fd, bool isListen = false ):fd_(fd),isListen_(isListen){};
     ~Channel();
