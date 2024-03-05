@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 #include "Socket.h"
+#include "Epoll.h"
 
 #define SERVER_PORT 8000
 #define MAX_EVENTS 100
@@ -52,30 +53,41 @@ int startServer() {
 
 
 
-  int epollFd = epoll_create1(0);
-  if (epollFd == -1) {
-    std::cerr << "Failed to create epoll instance\n";
-    return -1;
-  }
+  // int epollFd = epoll_create1(0);
+  // if (epollFd == -1) {
+  //   std::cerr << "Failed to create epoll instance\n";
+  //   return -1;
+  // }
 
-  epoll_event event, events[MAX_EVENTS];
-  event.events = EPOLLIN ;
-  event.data.fd = serverSocket.fd();
+  // epoll_event event, events[MAX_EVENTS];
+  // event.events = EPOLLIN ;
+  // event.data.fd = serverSocket.fd();
 
-  if (epoll_ctl(epollFd, EPOLL_CTL_ADD, serverSocket.fd(), &event) == -1) {
-    std::cerr << "Failed to add server socket to epoll\n";
-    return -1;
-  }
+  // if (epoll_ctl(epollFd, EPOLL_CTL_ADD, serverSocket.fd(), &event) == -1) {
+  //   std::cerr << "Failed to add server socket to epoll\n";
+  //   return -1;
+  // }
+
+  Epoll ep;
+  ep.addFd(serverSocket.fd(), EPOLLIN); // 采用水平触发
+  std::vector<epoll_event> events ;// 存放epoll_wait返回的事件
+
+
 
   std::unordered_map<int, int> clientIDMap; // 使用unordered_map来存储ID和客户端套接字的关系
   while (true) {
-    int numEvents = epoll_wait(epollFd, events, MAX_EVENTS, -1);
-    if (numEvents == -1) {
-      std::cerr << "Failed to wait for events\n";
-      return -1;  // ToDo 出错处理
-    }
-    for (int i = 0; i < numEvents; ++i) {
-      if (events[i].data.fd == serverSocket.fd()) {
+    // int numEvents = epoll_wait(epollFd, events, MAX_EVENTS, -1);
+    // if (numEvents == -1) {
+    //   std::cerr << "Failed to wait for events\n";
+    //   return -1;  // ToDo 出错处理
+    // }
+    events = ep.loop(-1);
+
+
+
+
+    for (auto event : events) {
+      if (event.data.fd == serverSocket.fd()) {
         //sockaddr_in peerAddr;
         //socklen_t peerAddrLen = sizeof(peerAddr);
         //clientSocket = accept4(serverSocket, reinterpret_cast<sockaddr *>(&peerAddr), &peerAddrLen,SOCK_NONBLOCK); // 改用accept4创建非阻塞套接字 
@@ -90,39 +102,42 @@ int startServer() {
         }
         std::cout << "accept client (fd=" << clientSocket->fd()<<", ip = "<<peerAddr.ip() << ":" << peerAddr.port()<< " ) ok."<<std::endl;
 
-        //将客户端套接字加入到epoll中，监听该套接字上的可读事件，只要可读就一直读
-        event.events = EPOLLIN | EPOLLET;
-        event.data.fd = clientSocket->fd();
-        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, clientSocket->fd(), &event) == -1) {
-          std::cerr << "Failed to add client socket to epoll\n";
-          return -1;
-        }
+        // //将客户端套接字加入到epoll中，监听该套接字上的可读事件，只要可读就一直读
+        // event.events = EPOLLIN | EPOLLET;
+        // event.data.fd = clientSocket->fd();
+        // if (epoll_ctl(epollFd, EPOLL_CTL_ADD, clientSocket->fd(), &event) == -1) {
+        //   std::cerr << "Failed to add client socket to epoll\n";
+        //   return -1;
+        // }
+
+        ep.addFd(clientSocket->fd(), EPOLLIN | EPOLLET); // 对连接上来的客户端采用边缘触发
 
         // 接收客户端发送的第一个消息作为ID
         int clientID;
         int recvBytes = recv(clientSocket->fd(), &clientID, sizeof(clientID), 0);
         if (recvBytes <= 0) {
           std::cerr << "Failed to receive client ID\n";
-          epoll_ctl(epollFd, EPOLL_CTL_DEL, clientSocket->fd(), nullptr);
+          ep.delFd(clientSocket->fd());
+         // epoll_ctl(epollFd, EPOLL_CTL_DEL, clientSocket->fd(), nullptr);
           delete clientSocket;
           continue;
         }
 
         // 将客户端ID和套接字建立关联
         std::cout << "Client ID: " << clientID << std::endl;
-        std::cout << "Client fd: " << clientSocket << std::endl;
+        std::cout << "Client fd: " << clientSocket->fd() << std::endl;
         clientIDMap[clientID] = clientSocket->fd(); // 将ID和客户端套接字的关系存储到unordered_map中
-      } else if(events[i].events & EPOLLIN){
+      } else if(event.events & EPOLLIN){
         // 监听到客户端的套接字，说明客户端有消息发送过来,转发消息
   
         // 先获取header
         char headerBuffer[sizeof(DiagramHeader)];
-        int recvBytes = recv(events[i].data.fd, headerBuffer, sizeof(DiagramHeader), 0);
+        int recvBytes = recv(event.data.fd, headerBuffer, sizeof(DiagramHeader), 0);
         // ToDo 出错处理
         DiagramHeader receivedHeader;
         memcpy(&receivedHeader, headerBuffer, sizeof(DiagramHeader));
         char dataBuffer[receivedHeader.diagramLength];
-        recvBytes = recv(events[i].data.fd, dataBuffer, receivedHeader.diagramLength, 0);
+        recvBytes = recv(event.data.fd, dataBuffer, receivedHeader.diagramLength, 0);
         // 获取到的数据 std::cout.write(dataBuffer, sizeof(dataBuffer)) << std::endl;
         if (recvBytes <= 0) {
           if (recvBytes == 0) {
@@ -130,8 +145,8 @@ int startServer() {
           } else {
             std::cerr << "Error in receiving data\n"<<std::endl;
           }
-          close(events[i].data.fd); // 关闭客户端套接字
-          epoll_ctl(epollFd, EPOLL_CTL_DEL, events[i].data.fd, nullptr); // 从epoll中删除该套接字
+          close(event.data.fd); // Todo ,关闭对应的Socket。关闭客户端套接字
+          ep.delFd(event.data.fd);
           continue;
         }
 
@@ -143,8 +158,9 @@ int startServer() {
         // 获取消息中的目的ID，根据目的ID获取对应的客户端套接字并发送消息
         if (clientIDMap.find(receivedHeader.diagramID) == clientIDMap.end()) {
           std::cout << "Client disconnected\n"<<std::endl;
-          close(events[i].data.fd);
-          epoll_ctl(epollFd, EPOLL_CTL_DEL, events[i].data.fd, nullptr);
+          close(event.data.fd);
+          // epoll_ctl(epollFd, EPOLL_CTL_DEL, events[i].data.fd, nullptr);
+          ep.delFd(event.data.fd);
           continue;
         } else {
           send(clientIDMap[receivedHeader.diagramID], buffer, sizeof(buffer), 0);
@@ -156,7 +172,6 @@ int startServer() {
   }
 
   delete &serverSocket;
-  close(epollFd);
-
+  delete &ep;
   return 0;
 }

@@ -4,7 +4,7 @@
  * @version: 
  * @Date: 2024-03-02 03:43:26
  * @LastEditors: oliver
- * @LastEditTime: 2024-03-02 04:35:30
+ * @LastEditTime: 2024-03-02 08:58:42
  */
 
 // #include <sys/epoll.h>
@@ -46,7 +46,7 @@ Epoll::~Epoll()
     close(epollFd_);
 }
 
-void Epoll::addFd(int socketFd, uint32_t events){
+int Epoll::addFd(int socketFd, uint32_t events){
     epoll_event event;
     event.events = events;
     event.data.fd = socketFd;
@@ -54,8 +54,34 @@ void Epoll::addFd(int socketFd, uint32_t events){
     if (epoll_ctl(epollFd_, EPOLL_CTL_ADD, socketFd, &event) == -1)
     {
         printf("epoll_ctl() failed (%d)",errno);
-        exit(EXIT_FAILURE);
+       // exit(EXIT_FAILURE);
+       return -1;
     }
+    return 0;
+}
+
+int Epoll::delFd(int socketFd){
+    if (epoll_ctl(epollFd_, EPOLL_CTL_DEL, socketFd, NULL) == -1)
+    {
+        printf("epoll_ctl() failed (%d)",errno);
+       // exit(EXIT_FAILURE);
+       return -1;
+    }
+    return 0;
+}
+
+int Epoll::modFd(int socketFd, uint32_t events){
+    epoll_event event;
+    event.events = events;
+    event.data.fd = socketFd;
+
+    if (epoll_ctl(epollFd_, EPOLL_CTL_MOD, socketFd, &event) == -1)
+    {
+        printf("epoll_ctl() failed (%d)",errno);
+       // exit(EXIT_FAILURE);
+       return -1;
+    }
+    return 0;
 }
 
 std::vector<epoll_event> Epoll::loop (int timeout){
@@ -78,8 +104,4 @@ std::vector<epoll_event> Epoll::loop (int timeout){
         events.push_back(events_[i]);
     }
     return events;
-}
-
-void Epoll::modFd(int fd, uint32_t events){
-    
 }
