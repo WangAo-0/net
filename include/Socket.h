@@ -33,7 +33,7 @@ public:
     void listen(int num= SOMAXCONN); // 服务端的socket将调用该函数，监听一个地址； 可排队等待的连接数
     int accept(InetAddress &peerAddress); // 服务端的socket将调用该函数，接受一个连接 
     
-    void connect(const InetAddress &serverAddress); // 客户端的socket将调用该函数，连接一个地址
-    void shutdownWrite(); // 关闭写s端
+    // void connect(const InetAddress &serverAddress); // 客户端的socket将调用该函数，连接一个地址
+    // void shutdownWrite(); // 关闭写s端
 
 };

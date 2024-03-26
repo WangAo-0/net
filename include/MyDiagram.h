@@ -27,4 +27,4 @@ struct DiagramHeader {
 // }; 
 
 
-#endif My_Diagram
+#endif
